@@ -5,8 +5,9 @@ import {
   createUserWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
-import { auth } from "../utils/firebase";
+import { auth, firestore } from "../utils/firebase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { addDoc, collection, doc, setDoc } from "@firebase/firestore";
 
 type User = {
   uid: string;
@@ -43,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    return unsubscribe; // unsubscribe on unmount
+    return unsubscribe;
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -56,7 +57,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (email: string, password: string) => {
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const newUser = userCredential.user;
+
+      await setDoc(doc(firestore, "users", newUser.uid), {
+        email: newUser.email,
+        createdAt: new Date().toISOString(),
+      });
+
+      await addDoc(
+        collection(firestore, "users", newUser.uid, "transactions"),
+        {
+          type: "income",
+          amount: 0,
+          category: "other_income",
+          description: "Inicjalizacja konta",
+          date: new Date().toISOString(),
+          createdAt: Date.now(),
+          synced: true,
+        }
+      );
     } catch (error) {
       throw error;
     }
