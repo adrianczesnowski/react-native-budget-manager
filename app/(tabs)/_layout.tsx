@@ -22,7 +22,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
-        headerShown: useClientOnlyValue(false, true),
+        headerShown: false,
       }}
     >
       <Tabs.Screen
@@ -37,15 +37,15 @@ export default function TabLayout() {
       <Tabs.Screen
         name="income"
         options={{
-          title: "Wpływy",
-          tabBarIcon: ({ color }) => <TabBarIcon name="file" color={color} />,
+          title: "Przychody",
+          tabBarIcon: ({ color }) => <TabBarIcon name="plus" color={color} />,
         }}
       />
       <Tabs.Screen
         name="expenses"
         options={{
           title: "Wydatki",
-          tabBarIcon: ({ color }) => <TabBarIcon name="file" color={color} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="minus" color={color} />,
         }}
       />
       <Tabs.Screen

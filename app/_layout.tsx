@@ -29,6 +29,24 @@ export const unstable_settings = {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    const inAuthGroup = segments[0] === "login";
+
+    if (!user && !inAuthGroup) {
+      router.replace("/login");
+    } else if (user && inAuthGroup) {
+      router.replace("/(tabs)");
+    }
+  }, [user, segments]);
+
+  return <>{children}</>;
+}
+
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
@@ -59,29 +77,37 @@ function RootLayoutNav() {
   return (
     <NetworkProvider>
       <AuthProvider>
-        <TransactionProvider>
-          <DocumentProvider>
-            <ThemeProvider
-              value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-            >
-              <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen
-                  name="modal"
-                  options={{ presentation: "modal", title: "Dodaj transakcję" }}
-                />
-                <Stack.Screen
-                  name="transaction-details/[id]"
-                  options={{
-                    title: "Szczególy transakcji",
-                    headerBackTitle: "Powrót",
-                  }}
-                />
-                <Stack.Screen name="login" options={{ headerShown: false }} />
-              </Stack>
-            </ThemeProvider>
-          </DocumentProvider>
-        </TransactionProvider>
+        <AuthGuard>
+          <TransactionProvider>
+            <DocumentProvider>
+              <ThemeProvider
+                value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+              >
+                <Stack>
+                  <Stack.Screen
+                    name="(tabs)"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="modal"
+                    options={{
+                      presentation: "modal",
+                      title: "Dodaj transakcję",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="transaction-details/[id]"
+                    options={{
+                      title: "Szczególy transakcji",
+                      headerBackTitle: "Powrót",
+                    }}
+                  />
+                  <Stack.Screen name="login" options={{ headerShown: false }} />
+                </Stack>
+              </ThemeProvider>
+            </DocumentProvider>
+          </TransactionProvider>
+        </AuthGuard>
       </AuthProvider>
     </NetworkProvider>
   );
