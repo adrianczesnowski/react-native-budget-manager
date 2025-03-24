@@ -14,12 +14,11 @@ import { useTransactions } from "../../context/TransactionContext";
 import TransactionCard from "../../components/TransactionCard";
 import Colors from "../../constants/Colors";
 
-export default function ExpensesScreen() {
+export default function IncomeScreen() {
   const { user } = useAuth();
-  const { transactions, loading, filterTransactions, getTransactions } =
-    useTransactions();
+  const { loading, filterTransactions, getTransactions } = useTransactions();
 
-  const expenses = filterTransactions("expense");
+  const incomes = filterTransactions("income");
 
   useEffect(() => {
     if (!user) {
@@ -34,7 +33,7 @@ export default function ExpensesScreen() {
     router.push(`/transaction-details/${id}`);
   };
 
-  const handleAddExpense = () => {
+  const handleAddIncome = () => {
     router.push("/modal");
   };
 
@@ -48,11 +47,11 @@ export default function ExpensesScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Wydatki</Text>
+      <Text style={styles.title}>Przychody</Text>
 
-      {expenses.length > 0 ? (
+      {incomes.length > 0 ? (
         <FlatList
-          data={expenses}
+          data={incomes}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <TransactionCard
@@ -63,14 +62,14 @@ export default function ExpensesScreen() {
         />
       ) : (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Brak wydatków</Text>
-          <TouchableOpacity style={styles.addButton} onPress={handleAddExpense}>
-            <Text style={styles.addButtonText}>Dodaj wydatek</Text>
+          <Text style={styles.emptyText}>Brak przychodów</Text>
+          <TouchableOpacity style={styles.addButton} onPress={handleAddIncome}>
+            <Text style={styles.addButtonText}>Dodaj przychód</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <TouchableOpacity style={styles.fab} onPress={handleAddExpense}>
+      <TouchableOpacity style={styles.fab} onPress={handleAddIncome}>
         <Ionicons name="add" size={24} color="white" />
       </TouchableOpacity>
     </View>

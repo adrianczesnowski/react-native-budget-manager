@@ -35,6 +35,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="income"
+        options={{
+          title: "Wpływy",
+          tabBarIcon: ({ color }) => <TabBarIcon name="file" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="expenses"
+        options={{
+          title: "Wydatki",
+          tabBarIcon: ({ color }) => <TabBarIcon name="file" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="documents"
         options={{
           title: "Dokumenty",
