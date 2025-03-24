@@ -1,0 +1,130 @@
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../context/AuthContext';
+import { useTransactions } from '../../context/TransactionContext';
+import TransactionCard from '../../components/TransactionCard';
+import Colors from '../../constants/Colors';
+
+export default function ExpensesScreen() {
+  const { user } = useAuth();
+  const { transactions, loading, filterTransactions, getTransactions } = useTransactions();
+  
+  const expenses = filterTransactions('expense');
+  
+  useEffect(() => {
+    if (!user) {
+      router.replace('/login');
+      return;
+    }
+    
+    getTransactions();
+  }, [user]);
+
+  const handleViewTransaction = (id: string) => {
+    router.push(`/transaction-details/${id}`);
+  };
+
+  const handleAddExpense = () => {
+    router.push('/modal');
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Wydatki</Text>
+      
+      {expenses.length > 0 ? (
+        <FlatList
+          data={expenses}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <TransactionCard 
+              transaction={item} 
+              onPress={() => handleViewTransaction(item.id)} 
+            />
+          )}
+        />
+      ) : (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>Brak wydatków</Text>
+          <TouchableOpacity 
+            style={styles.addButton} 
+            onPress={handleAddExpense}
+          >
+            <Text style={styles.addButtonText}>Dodaj wydatek</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      <TouchableOpacity 
+        style={styles.fab}
+        onPress={handleAddExpense}
+      >
+        <Ionicons name="add" size={24} color="white" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#888',
+    marginBottom: 16,
+  },
+  addButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  addButtonText: {
+    color: 'white',
+    fontSize: 16,
+  },
+  fab: {
+    position: 'absolute',
+    right: 24,
+    bottom: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+});
