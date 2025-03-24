@@ -1,4 +1,3 @@
-// app/(tabs)/index.tsx
 import { useEffect, useState } from "react";
 import {
   View,
