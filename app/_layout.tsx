@@ -13,6 +13,8 @@ import "react-native-reanimated";
 import { useColorScheme } from "@/components/useColorScheme";
 import { NetworkProvider } from "@/context/NetworkContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { TransactionProvider } from "@/context/TransactionContext";
+import { DocumentProvider } from "@/context/DocumentContext";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -57,15 +59,22 @@ function RootLayoutNav() {
   return (
     <NetworkProvider>
       <AuthProvider>
-        <ThemeProvider
-          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-        >
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-          </Stack>
-        </ThemeProvider>
+        <TransactionProvider>
+          <DocumentProvider>
+            <ThemeProvider
+              value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+            >
+              <Stack>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen
+                  name="modal"
+                  options={{ presentation: "modal" }}
+                />
+                <Stack.Screen name="login" options={{ headerShown: false }} />
+              </Stack>
+            </ThemeProvider>
+          </DocumentProvider>
+        </TransactionProvider>
       </AuthProvider>
     </NetworkProvider>
   );
