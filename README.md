@@ -44,7 +44,7 @@ A comprehensive personal finance tracking application built with React Native an
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/budget-manager.git
+   git clone https://github.com/adrianczesnowski/react-native-budget-manager.git
    cd budget-manager
    ```
 
