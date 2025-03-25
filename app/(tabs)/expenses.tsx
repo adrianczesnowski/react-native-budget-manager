@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -13,22 +13,25 @@ import { useAuth } from "../../context/AuthContext";
 import { useTransactions } from "../../context/TransactionContext";
 import TransactionCard from "../../components/TransactionCard";
 import Colors from "../../constants/Colors";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback } from "react";
 
 export default function ExpensesScreen() {
   const { user } = useAuth();
-  const { transactions, loading, filterTransactions, getTransactions } =
-    useTransactions();
+  const { loading, filterTransactions, getTransactions } = useTransactions();
+  const initialLoadDone = useRef(false);
 
   const expenses = filterTransactions("expense");
 
-  useEffect(() => {
-    if (!user) {
-      router.replace("/login");
-      return;
-    }
-
-    getTransactions();
-  }, [user]);
+  useFocusEffect(
+    useCallback(() => {
+      if (user && !initialLoadDone.current) {
+        console.log("ExpensesScreen - initial load");
+        getTransactions();
+        initialLoadDone.current = true;
+      }
+    }, [])
+  );
 
   const handleViewTransaction = (id: string) => {
     router.push(`/transaction-details/${id}`);
@@ -38,7 +41,7 @@ export default function ExpensesScreen() {
     router.push("/modal");
   };
 
-  if (loading) {
+  if (loading && expenses.length === 0) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />

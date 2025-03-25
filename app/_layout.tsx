@@ -9,7 +9,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import "react-native-reanimated";
-
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useColorScheme } from "@/components/useColorScheme";
 import { NetworkProvider } from "@/context/NetworkContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
@@ -80,31 +80,43 @@ function RootLayoutNav() {
         <AuthGuard>
           <TransactionProvider>
             <DocumentProvider>
-              <ThemeProvider
-                value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-              >
-                <Stack>
-                  <Stack.Screen
-                    name="(tabs)"
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="modal"
-                    options={{
-                      presentation: "modal",
-                      title: "Dodaj transakcję",
-                    }}
-                  />
-                  <Stack.Screen
-                    name="transaction-details/[id]"
-                    options={{
-                      title: "Szczególy transakcji",
-                      headerBackTitle: "Powrót",
-                    }}
-                  />
-                  <Stack.Screen name="login" options={{ headerShown: false }} />
-                </Stack>
-              </ThemeProvider>
+              <SafeAreaProvider>
+                <ThemeProvider
+                  value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+                >
+                  <Stack>
+                    <Stack.Screen
+                      name="(tabs)"
+                      options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                      name="modal"
+                      options={{
+                        presentation: "modal",
+                        title: "Dodaj transakcję",
+                      }}
+                    />
+                    <Stack.Screen
+                      name="transaction-details/[id]"
+                      options={{
+                        title: "Szczególy transakcji",
+                        headerBackTitle: "Powrót",
+                      }}
+                    />
+                    <Stack.Screen
+                      name="document-details/[id]"
+                      options={{
+                        title: "Szczególy dokumentu",
+                        headerBackTitle: "Powrót",
+                      }}
+                    />
+                    <Stack.Screen
+                      name="login"
+                      options={{ headerShown: false }}
+                    />
+                  </Stack>
+                </ThemeProvider>
+              </SafeAreaProvider>
             </DocumentProvider>
           </TransactionProvider>
         </AuthGuard>

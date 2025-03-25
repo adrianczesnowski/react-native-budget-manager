@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import {
   collection,
   addDoc,
@@ -52,9 +52,11 @@ export function TransactionProvider({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const isSyncing = useRef(false);
+  const lastFetchTimestamp = useRef<number | null>(null);
 
   const { user } = useAuth();
-  const { isConnected } = useNetwork();
+  const { isConnected, addConnectivityListener } = useNetwork();
 
   useEffect(() => {
     if (user) {
@@ -64,10 +66,21 @@ export function TransactionProvider({
   }, [user]);
 
   useEffect(() => {
-    if (isConnected && pendingSyncCount > 0) {
+    if (isConnected && pendingSyncCount > 0 && !isSyncing.current) {
       syncTransactions();
     }
   }, [isConnected, pendingSyncCount]);
+
+  useEffect(() => {
+    if (user) {
+      const removeListener = addConnectivityListener(() => {
+        console.log("Network connection restored - triggering sync");
+        syncTransactions();
+      });
+      
+      return () => removeListener();
+    }
+  }, [user, addConnectivityListener]);
 
   const countPendingSync = async () => {
     try {
@@ -78,55 +91,6 @@ export function TransactionProvider({
       setPendingSyncCount(pendingKeys.length);
     } catch (error) {
       console.error("Error counting pending syncs:", error);
-    }
-  };
-
-  const getTransactions = async () => {
-    if (!user) return;
-
-    setLoading(true);
-    try {
-      const localTransactions = await getLocalTransactions();
-
-      if (isConnected) {
-        const q = query(
-          collection(firestore, "users", user.uid, "transactions"),
-          orderBy("createdAt", "desc")
-        );
-
-        const snapshot = await getDocs(q);
-
-        const cloudTransactions = snapshot.docs.map(
-          (doc) =>
-            ({
-              id: doc.id,
-              ...doc.data(),
-              synced: true,
-            }) as Transaction
-        );
-
-        const pendingIds = localTransactions
-          .filter((t) => !t.synced)
-          .map((t) => t.id);
-
-        const mergedTransactions = [
-          ...localTransactions.filter((t) => !t.synced),
-          ...cloudTransactions.filter((t) => !pendingIds.includes(t.id)),
-        ];
-
-        setTransactions(mergedTransactions);
-
-        await AsyncStorage.setItem(
-          "transactions",
-          JSON.stringify(mergedTransactions)
-        );
-      } else {
-        setTransactions(localTransactions);
-      }
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -143,15 +107,136 @@ export function TransactionProvider({
     }
   };
 
+  const saveLocalTransactions = async (transactions: Transaction[]) => {
+    try {
+      await AsyncStorage.setItem("transactions", JSON.stringify(transactions));
+    } catch (error) {
+      console.error("Error saving local transactions:", error);
+    }
+  };
+
+  const getTransactions = async () => {
+    if (!user) return;
+
+    const now = Date.now();
+    if (lastFetchTimestamp.current && now - lastFetchTimestamp.current < 1000) {
+      console.log("Skipping fetch - too soon after last fetch");
+      return;
+    }
+
+    lastFetchTimestamp.current = now;
+    setLoading(true);
+
+    try {
+      console.log("Fetching transactions from Firebase and local storage");
+
+      let cloudTransactions: Transaction[] = [];
+      if (isConnected) {
+        try {
+          const q = query(
+            collection(firestore, "users", user.uid, "transactions"),
+            orderBy("createdAt", "desc")
+          );
+
+          const snapshot = await getDocs(q);
+          console.log(`Firestore transactions count: ${snapshot.docs.length}`);
+
+          cloudTransactions = snapshot.docs.map(
+            (doc) =>
+              ({
+                id: doc.id,
+                ...doc.data(),
+                synced: true,
+              }) as Transaction
+          );
+        } catch (error) {
+          console.error("Error fetching from Firestore:", error);
+        }
+      }
+
+      const localStorageTransactions = await getLocalTransactions();
+
+      const keys = await AsyncStorage.getAllKeys();
+      const pendingKeys = keys.filter((key) =>
+        key.startsWith("pending_transaction_")
+      );
+
+      const pendingTransactions: Transaction[] = [];
+      for (const key of pendingKeys) {
+        try {
+          const txData = await AsyncStorage.getItem(key);
+          if (txData) {
+            pendingTransactions.push(JSON.parse(txData));
+          }
+        } catch (error) {
+          console.error(`Error reading ${key}:`, error);
+        }
+      }
+
+      console.log(
+        `Local transactions: ${localStorageTransactions.length}, Pending: ${pendingTransactions.length}`
+      );
+
+      const allTransactions = [...cloudTransactions];
+
+      const cloudIds = new Set(cloudTransactions.map((t) => t.id));
+      const cloudSignatures = new Set(
+        cloudTransactions.map(
+          (t) => `${t.createdAt}_${t.amount}_${t.type}_${t.category}`
+        )
+      );
+
+      localStorageTransactions
+        .filter((t) => t.synced && !cloudIds.has(t.id))
+        .forEach((t) => allTransactions.push(t));
+
+      const addedLocalIds = new Set<string>();
+
+      pendingTransactions.forEach((t) => {
+        const signature = `${t.createdAt}_${t.amount}_${t.type}_${t.category}`;
+        if (!cloudSignatures.has(signature) && !addedLocalIds.has(t.id)) {
+          allTransactions.push(t);
+          cloudSignatures.add(signature); 
+          addedLocalIds.add(t.id);
+        }
+      });
+
+      const sortedTransactions = allTransactions.sort(
+        (a, b) => b.createdAt - a.createdAt
+      );
+
+      console.log(`Final transactions count: ${sortedTransactions.length}`);
+
+      await saveLocalTransactions(sortedTransactions);
+      setTransactions(sortedTransactions);
+    } catch (error: any) {
+      console.error("Error getting transactions:", error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getTransactionById = async (
     id: string
   ): Promise<Transaction | null> => {
     try {
+      const inMemoryTransaction = transactions.find((t) => t.id === id);
+      if (inMemoryTransaction) {
+        return inMemoryTransaction;
+      }
+
       const localTransactions = await getLocalTransactions();
       const localTransaction = localTransactions.find((t) => t.id === id);
-
       if (localTransaction) {
         return localTransaction;
+      }
+
+      const pendingTxJson = await AsyncStorage.getItem(
+        `pending_transaction_${id}`
+      );
+      if (pendingTxJson) {
+        return JSON.parse(pendingTxJson);
       }
 
       if (user && isConnected) {
@@ -176,72 +261,211 @@ export function TransactionProvider({
 
   const addTransaction = async (
     transaction: Omit<Transaction, "id" | "synced" | "createdAt">
-  ) => {
+  ): Promise<void> => {
     if (!user) return;
 
     try {
+      const localId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
       const newTransaction: Transaction = {
         ...transaction,
-        id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        id: localId,
         synced: false,
         createdAt: Date.now(),
       };
 
-      const updatedTransactions = [newTransaction, ...transactions];
-      setTransactions(updatedTransactions);
-      await AsyncStorage.setItem(
-        "transactions",
-        JSON.stringify(updatedTransactions)
+      console.log(
+        `Adding new ${transaction.type} transaction: ${transaction.amount} zł`
       );
 
+      if (transaction.type === "income") {
+        console.log("Checking for duplicate income transaction before adding");
+        const similarTransactions = transactions.filter(
+          (t) =>
+            t.type === transaction.type &&
+            t.amount === transaction.amount &&
+            t.category === transaction.category &&
+            Math.abs(Date.now() - t.createdAt) < 5000
+        );
+
+        if (similarTransactions.length > 0) {
+          console.log("Prevented duplicate income transaction");
+          return;
+        }
+      }
+
       await AsyncStorage.setItem(
-        `pending_transaction_${newTransaction.id}`,
+        `pending_transaction_${localId}`,
         JSON.stringify(newTransaction)
       );
 
       setPendingSyncCount((prev) => prev + 1);
 
+      const localTransactions = await getLocalTransactions();
+      await saveLocalTransactions([newTransaction, ...localTransactions]);
+
+      setTransactions((current) => [newTransaction, ...current]);
+
       if (isConnected) {
-        await syncTransaction(newTransaction);
+        setTimeout(() => {
+          syncTransaction(newTransaction);
+        }, 500);
       }
     } catch (error: any) {
+      console.error("Error adding transaction:", error);
       setError(error.message);
     }
   };
 
   const syncTransaction = async (transaction: Transaction) => {
-    if (!user || !isConnected) return;
+    if (!user || !isConnected || transaction.synced) return;
 
     try {
-      await addDoc(collection(firestore, "users", user.uid, "transactions"), {
-        type: transaction.type,
-        amount: transaction.amount,
-        category: transaction.category,
-        description: transaction.description,
-        date: transaction.date,
-        createdAt: transaction.createdAt,
-        synced: true,
-      });
-
-      const updatedTransactions = transactions.map((t) =>
-        t.id === transaction.id ? { ...t, synced: true } : t
+      console.log(
+        `Syncing transaction: ${transaction.id}, type: ${transaction.type}`
       );
 
-      setTransactions(updatedTransactions);
-      await AsyncStorage.setItem(
-        "transactions",
-        JSON.stringify(updatedTransactions)
+      const timeWindow = 5000;
+
+      const q = query(
+        collection(firestore, "users", user.uid, "transactions"),
+        where("type", "==", transaction.type),
+        where("amount", "==", transaction.amount),
+        where("category", "==", transaction.category)
+      );
+
+      const querySnap = await getDocs(q);
+      let isDuplicate = false;
+      let firebaseId: string | null = null;
+
+      for (const doc of querySnap.docs) {
+        const data = doc.data();
+        if (Math.abs(data.createdAt - transaction.createdAt) < timeWindow) {
+          isDuplicate = true;
+          firebaseId = doc.id;
+          break;
+        }
+      }
+
+      if (isDuplicate && firebaseId) {
+        console.log(
+          `Found duplicate transaction in Firestore with ID: ${firebaseId}`
+        );
+
+        const updatedTransaction = {
+          ...transaction,
+          id: firebaseId,
+          synced: true,
+        };
+
+        setTransactions((current) =>
+          current.map((t) => (t.id === transaction.id ? updatedTransaction : t))
+        );
+
+        const localTransactions = await getLocalTransactions();
+        await saveLocalTransactions(
+          localTransactions.map((t) =>
+            t.id === transaction.id ? updatedTransaction : t
+          )
+        );
+
+        await AsyncStorage.removeItem(`pending_transaction_${transaction.id}`);
+        setPendingSyncCount((prev) => prev - 1);
+
+        return;
+      }
+
+      if (transaction.type === "income") {
+        console.log("Running additional income duplicate check");
+
+        const recentQ = query(
+          collection(firestore, "users", user.uid, "transactions"),
+          where("type", "==", "income")
+        );
+
+        const recentSnap = await getDocs(recentQ);
+
+        for (const doc of recentSnap.docs) {
+          const data = doc.data();
+          if (
+            data.amount === transaction.amount &&
+            data.category === transaction.category &&
+            Math.abs(data.createdAt - transaction.createdAt) < 60000
+          ) {
+            console.log("Found similar recent income - preventing duplicate");
+
+            const updatedTransaction = {
+              ...transaction,
+              id: doc.id, 
+              synced: true,
+            };
+
+            setTransactions((current) =>
+              current.map((t) =>
+                t.id === transaction.id ? updatedTransaction : t
+              )
+            );
+
+            const localTransactions = await getLocalTransactions();
+            await saveLocalTransactions(
+              localTransactions.map((t) =>
+                t.id === transaction.id ? updatedTransaction : t
+              )
+            );
+
+            await AsyncStorage.removeItem(
+              `pending_transaction_${transaction.id}`
+            );
+            setPendingSyncCount((prev) => prev - 1);
+
+            return;
+          }
+        }
+      }
+
+      console.log("No duplicates found, adding to Firestore");
+      const docRef = await addDoc(
+        collection(firestore, "users", user.uid, "transactions"),
+        {
+          type: transaction.type,
+          amount: transaction.amount,
+          category: transaction.category,
+          description: transaction.description,
+          date: transaction.date,
+          createdAt: transaction.createdAt,
+        }
+      );
+
+      console.log(`Transaction synced with Firebase ID: ${docRef.id}`);
+
+      const syncedTransaction = {
+        ...transaction,
+        id: docRef.id,
+        synced: true,
+      };
+
+      setTransactions((current) =>
+        current.map((t) => (t.id === transaction.id ? syncedTransaction : t))
+      );
+
+      const localTransactions = await getLocalTransactions();
+      await saveLocalTransactions(
+        localTransactions.map((t) =>
+          t.id === transaction.id ? syncedTransaction : t
+        )
       );
 
       await AsyncStorage.removeItem(`pending_transaction_${transaction.id}`);
       setPendingSyncCount((prev) => prev - 1);
     } catch (error) {
-      console.error("Error syncing transaction:", error);
+      console.error(`Error syncing transaction ${transaction.id}:`, error);
     }
   };
-
   const syncTransactions = async () => {
-    if (!user || !isConnected) return;
+    if (!user || !isConnected || isSyncing.current) return;
+
+    isSyncing.current = true;
+    console.log("Starting batch transaction sync");
 
     try {
       const keys = await AsyncStorage.getAllKeys();
@@ -250,22 +474,32 @@ export function TransactionProvider({
       );
 
       for (const key of pendingKeys) {
-        const transactionJson = await AsyncStorage.getItem(key);
-        if (transactionJson) {
-          const transaction = JSON.parse(transactionJson) as Transaction;
-          await syncTransaction(transaction);
+        try {
+          const txJson = await AsyncStorage.getItem(key);
+          if (txJson) {
+            const transaction = JSON.parse(txJson);
+            await syncTransaction(transaction);
+          }
+        } catch (error) {
+          console.error(`Error syncing from ${key}:`, error);
         }
       }
 
       await getTransactions();
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error) {
+      console.error("Error during batch sync:", error);
+    } finally {
+      isSyncing.current = false;
     }
   };
 
   const filterTransactions = (type?: "income" | "expense"): Transaction[] => {
     if (!type) return transactions;
-    return transactions.filter((t) => t.type === type);
+    const filtered = transactions.filter((t) => t.type === type);
+    console.log(
+      `Filtering for ${type}: found ${filtered.length} of ${transactions.length} total`
+    );
+    return filtered;
   };
 
   return (

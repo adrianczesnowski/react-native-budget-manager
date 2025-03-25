@@ -4,9 +4,20 @@ import { Ionicons } from "@expo/vector-icons";
 import Colors from "../../constants/Colors";
 import { useAuth } from "@/context/AuthContext";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  writeBatch,
+} from "firebase/firestore";
+import { firestore, auth } from "@/utils/firebase";
+import { deleteUser } from "firebase/auth";
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleLogout = async () => {
     Alert.alert("Wylogowanie", "Czy na pewno chcesz się wylogować?", [
@@ -27,6 +38,119 @@ export default function ProfileScreen() {
         },
       },
     ]);
+  };
+
+  const handleDeleteAccount = async () => {
+    Alert.alert(
+      "Usuń konto",
+      "Czy na pewno chcesz usunąć swoje konto? Ta operacja jest nieodwracalna i spowoduje usunięcie wszystkich danych.",
+      [
+        {
+          text: "Anuluj",
+          style: "cancel",
+        },
+        {
+          text: "Usuń konto",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsDeleting(true);
+
+              Alert.alert(
+                "Potwierdź usunięcie",
+                "Ta operacja spowoduje trwałe usunięcie wszystkich Twoich danych. Czy na pewno chcesz kontynuować?",
+                [
+                  {
+                    text: "Anuluj",
+                    style: "cancel",
+                    onPress: () => setIsDeleting(false),
+                  },
+                  {
+                    text: "Tak, usuń konto",
+                    style: "destructive",
+                    onPress: async () => {
+                      await deleteAccountData();
+                    },
+                  },
+                ]
+              );
+            } catch (error) {
+              console.error("Błąd usuwania konta:", error);
+              Alert.alert(
+                "Błąd",
+                "Nie udało się usunąć konta. Spróbuj ponownie później."
+              );
+              setIsDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const deleteAccountData = async () => {
+    try {
+      if (!user) return;
+
+      await deleteUserTransactions(user.uid);
+
+      await deleteDoc(doc(firestore, "users", user.uid));
+
+      await clearLocalStorage();
+
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        await deleteUser(currentUser);
+      }
+
+      router.replace("/login");
+
+      Alert.alert("Sukces", "Twoje konto zostało usunięte.");
+    } catch (error) {
+      console.error("Błąd podczas usuwania konta:", error);
+      Alert.alert(
+        "Błąd",
+        "Wystąpił problem podczas usuwania konta. Spróbuj ponownie później."
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const deleteUserTransactions = async (userId: string) => {
+    const transactionsRef = collection(
+      firestore,
+      "users",
+      userId,
+      "transactions"
+    );
+    const transactionsSnapshot = await getDocs(transactionsRef);
+
+    const batch = writeBatch(firestore);
+
+    transactionsSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+  };
+
+  const clearLocalStorage = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+
+      const appKeys = keys.filter(
+        (key) =>
+          key.startsWith("transactions") ||
+          key.startsWith("pending_transaction_") ||
+          key === "user"
+      );
+
+      await AsyncStorage.multiRemove(appKeys);
+    } catch (error) {
+      console.error("Error clearing AsyncStorage:", error);
+      throw error;
+    }
   };
 
   return (
@@ -81,6 +205,21 @@ export default function ProfileScreen() {
           style={styles.logoutIcon}
         />
         <Text style={styles.logoutText}>Wyloguj</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={handleDeleteAccount}
+        disabled={isDeleting}
+      >
+        <Ionicons
+          name="trash-outline"
+          size={24}
+          color="white"
+          style={styles.logoutIcon}
+        />
+        <Text style={styles.logoutText}>
+          {isDeleting ? "Usuwanie..." : "Usuń konto"}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -137,6 +276,15 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     backgroundColor: Colors.red,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  deleteButton: {
+    backgroundColor: "#CC0000",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

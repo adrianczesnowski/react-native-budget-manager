@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useNetwork } from "../../context/NetworkContext";
 import TransactionCard from "../../components/TransactionCard";
 import SyncIndicator from "../../components/SyncIndicator";
 import Colors from "../../constants/Colors";
+import { useFocusEffect } from "@react-navigation/native";
 
 export default function TabOneScreen() {
   const { user } = useAuth();
@@ -28,15 +29,30 @@ export default function TabOneScreen() {
     []
   );
 
+  const initialLoadDone = useRef(false);
+
   useEffect(() => {
-    if (user) {
+    if (user && !initialLoadDone.current) {
+      console.log("TabOneScreen - initial mount load");
       getTransactions();
+      initialLoadDone.current = true;
     }
   }, [user]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (user && initialLoadDone.current && isConnected) {
+        console.log("TabOneScreen - focus refresh (online)");
+        getTransactions();
+      } else if (user && initialLoadDone.current) {
+        console.log("TabOneScreen - focus skipped (offline)");
+      }
+    }, [isConnected])
+  );
+
   useEffect(() => {
+    console.log(`Recalculating from ${transactions.length} transactions`);
     if (transactions.length > 0) {
-      // Calculate totals
       let income = 0;
       let expense = 0;
 
@@ -50,9 +66,11 @@ export default function TabOneScreen() {
 
       setTotalIncome(income);
       setTotalExpense(expense);
-
-      // Set recent transactions (last 5)
       setRecentTransactions(transactions.slice(0, 5));
+    } else {
+      setTotalIncome(0);
+      setTotalExpense(0);
+      setRecentTransactions([]);
     }
   }, [transactions]);
 
@@ -64,7 +82,7 @@ export default function TabOneScreen() {
     router.push(`/transaction-details/${id}`);
   };
 
-  if (loading) {
+  if (loading && isConnected) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />

@@ -8,6 +8,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -50,8 +51,9 @@ export default function TransactionModal() {
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false); 
 
-  const { addTransaction } = useTransactions();
+  const { addTransaction, getTransactions } = useTransactions();
 
   const handleSave = async () => {
     const newErrors: Record<string, string> = {};
@@ -69,6 +71,8 @@ export default function TransactionModal() {
       return;
     }
 
+    setIsSubmitting(true); 
+    
     try {
       await addTransaction({
         type,
@@ -78,9 +82,14 @@ export default function TransactionModal() {
         date: new Date().toISOString(),
       });
 
+      await getTransactions();
+      
       router.back();
     } catch (error) {
       console.error("Error adding transaction:", error);
+      Alert.alert("Błąd", "Nie udało się dodać transakcji. Spróbuj ponownie.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
